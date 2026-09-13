@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Crossy Road</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="game" width="480" height="720"></canvas>
+
+    <div id="hud">
+      <div id="score">0</div>
+      <div id="best">Best: 0</div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+      <div class="card">
+        <p class="eyebrow">Boerenerf arcade</p>
+        <h1>🐔 Crossy Road</h1>
+        <p>Steek de weg en de rivier over.<br>Ontwijk auto's, spring op boomstammen.</p>
+        <p class="hint">Pijltjestoetsen / WASD, of swipe op mobiel</p>
+        <button id="start-btn">Start</button>
+      </div>
+    </div>
+
+    <div id="gameover-screen" class="overlay hidden">
+      <div class="card">
+        <p class="eyebrow">Helaas</p>
+        <h1>Game Over</h1>
+        <p id="final-score" class="score-line">Score: 0</p>
+        <p id="best-score">Best: 0</p>
+        <button id="restart-btn">Opnieuw</button>
+      </div>
+    </div>
+
+    <div id="touch-controls">
+      <button data-dir="up">▲</button>
+      <div class="row">
+        <button data-dir="left">◀</button>
+        <button data-dir="down">▼</button>
+        <button data-dir="right">▶</button>
+      </div>
+    </div>
+  </div>
+
+<script src="game.js"></script>
+</body>
+</html>
