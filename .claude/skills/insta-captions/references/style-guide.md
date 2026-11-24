@@ -53,7 +53,7 @@ crowd behind them. Only the two men count; the crowd may be covered. Hook 0–5.
 {"hook_end": 5.24, "hook_side": "left",
  "hook_zones": [{"from": 0, "to": 2.733, "side": "left", "zone": [28, 540, 567]},
                 {"from": 2.733, "to": 99, "side": "center", "zone": [370, 785, 615]}],
- "key_words": ["amazing", "replace", "replacing"],
+ "key_words": ["amazing", "replace", "replaceable"],
  "cuts": [2.733, 9.867, 13.333, 15.2], "wide": [[2.733, 9.867]],
  "post_y": [0.55, 0.55], "post_wide": {"zone": [385, 765], "y": 0.12},
  "replace": {}, "emphasis": ["amazing", "replace", "value", "40", "busting"]}
