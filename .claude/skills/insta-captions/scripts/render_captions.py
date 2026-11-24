@@ -20,12 +20,16 @@ config.json (all times in seconds):
   "cuts":      [5.53, 9.13],                 # camera cuts (from prepare.py probe.json)
   "wide":      [[5.53, 9.13]],               # optional: time ranges where faces sit LOWER in the frame
   "content":   [555, 1364],                  # optional: y-range of the real picture (from probe.json)
-  "hook_layout": "corner",                   # "corner" (default): 2+1 rows in the free corner next to ONE speaker
+  "hook_layout": "fill",                     # "fill" (default): 3-4 words on screen at once, one common size per group,
+                                             #         words appear as they are said (no word alone, no huge/tiny contrast)
+                                             # "corner": 2+1 rows in the free corner (clip 1 look: big key words, 1-2 word groups)
                                              # "band": ONE row in a band along the top of the picture, for clips
                                              #         with no free side (close-ups, many people, wide shots)
   "hook_zone": [40, 1040, 567],              # optional [x0, x1, y_top] override of the hook area
   "hook_zones": [{"from": 0, "to": 2.7, "side": "left"|"right"|"center", "zone": [28, 520, 567]}, ...],
-                                             # optional: a different free area per shot (time range, side, [x0,x1,y_top])
+                                             # optional: a different free area per shot (time range, side, [x0,x1,y_top]);
+                                             #   "band": [x0,x1,y_top] = a wide one-row strip used when a very long word
+                                             #   would make a group tiny (put it where no head is, e.g. above the heads)
   "post_wide": {"zone": [80, 1000], "bottom": 0.47},
                                              # optional: in the wide shots put the simple captions in this x-range
                                              #   (e.g. in the gap BETWEEN two people). "bottom": the caption block ends at
@@ -125,31 +129,49 @@ def _gap(w, scale):
     return max(w['size'] * scale * 0.26, 8)
 
 
-def build_zone(lines, x0, x1, y_top, align, gs, ge, fade, anim, s0, gap):
-    """Lay out rows of words inside a zone; shrink a row if it does not fit; stack rows downward."""
+def _fit(ln, zw):
+    """Scale at which a row fits the zone. Returns (scale, widths, gaps, total); widths/total are those of the last
+    measuring pass, exactly as the approved first version computed them (keep: it decides the exact x position)."""
+    scale = 1.0
+    for _ in range(3):
+        ws = [text_width(w['text'], font(w['path'], w['size'] * scale), w.get('tracking', 0) * scale) + 2 * _st(w, scale) for w in ln]
+        gaps = [_gap(w, scale) for w in ln[:-1]]
+        total = sum(ws) + sum(gaps)
+        if total > zw:
+            scale *= zw / total
+        else:
+            break
+    return scale, ws, gaps, total
+
+
+def build_zone(lines, x0, x1, y_top, align, gs, ge, fade, anim, s0, gap, uniform=False):
+    """Lay out rows of words inside a zone; shrink a row if it does not fit; stack rows downward.
+    uniform=True: every row of the group gets the same scale (the smallest one), so no row looks much
+    smaller/thinner than the others."""
     zw = x1 - x0
+    fits = [_fit(ln, zw) for ln in lines]
+    scales = [f[0] for f in fits]
+    if uniform and scales:
+        scales = [min(scales)] * len(scales)
     items, y = [], y_top
-    for ln in lines:
-        scale = 1.0
-        for _ in range(3):
+    for ln, fit, scale in zip(lines, fits, scales):
+        if uniform:        # fresh measurement at the final scale
             ws = [text_width(w['text'], font(w['path'], w['size'] * scale), w.get('tracking', 0) * scale) + 2 * _st(w, scale) for w in ln]
             gaps = [_gap(w, scale) for w in ln[:-1]]
             total = sum(ws) + sum(gaps)
-            if total > zw:
-                scale *= zw / total
-            else:
-                break
+        else:
+            _, ws, gaps, total = fit
         sprites = [make_sprite(w['text'], w['path'], w['size'] * scale, w.get('tracking', 0) * scale,
                                w.get('color', WHITE), _st(w, scale)) for w in ln]
-        asc = max(s[2] for s in sprites)
-        desc = max(s[3] for s in sprites)
+        asc = max(s_[2] for s_ in sprites)
+        desc = max(s_[3] for s_ in sprites)
         x = x0 if align == 'left' else (x1 - total if align == 'right' else x0 + (zw - total) / 2)
         base = y + asc
-        for i, (sp, pad, a, d) in enumerate(sprites):
+        for i, (sp, pad, a_, d_) in enumerate(sprites):
             it = Item()
             it.sprite = sp
             it.x = int(round(x - pad))
-            it.y = int(round(base - a - pad))
+            it.y = int(round(base - a_ - pad))
             it.start = ln[i]['start']
             it.gs, it.ge, it.fade, it.anim, it.s0 = gs, ge, fade, anim, s0
             it.cx = it.x + sp.width / 2
@@ -308,6 +330,47 @@ class Project:
             groups.pop()
         return groups
 
+    def fill_groups(self, toks):
+        """3-4 consecutive words per screen (never one word alone), never across a camera cut."""
+        def crosses(a, b):
+            return any(a['start'] < c <= b['start'] for c in self.cuts)
+        segs, cur = [], []
+        for t in toks:
+            if cur and crosses(cur[-1], t):
+                segs.append(cur)
+                cur = []
+            cur.append(t)
+        if cur:
+            segs.append(cur)
+        groups = []
+        for seg in segs:
+            n = max(1, -(-len(seg) // 4))
+            base, extra = divmod(len(seg), n)
+            k = 0
+            for q in range(n):
+                size = base + (1 if q < extra else 0)
+                groups.append(seg[k:k + size])
+                k += size
+        return groups
+
+    def fill_rows(self, ws, zw):
+        """Pack words into rows (greedy). The size is chosen so that the longest single word still fits."""
+        def width(w, sc):
+            return (text_width(w['text'], font(w['path'], w['size'] * sc), w.get('tracking', 0) * sc)
+                    + 2 * int(round(w.get('stroke', 0) * w['size'] * sc)))
+        s0 = min(1.0, min(zw / width(w, 1.0) for w in ws))
+        rows, cur, cw = [], [], 0.0
+        for w in ws:
+            ww, gp = width(w, s0), w['size'] * s0 * w['gapk']
+            if cur and cw + gp + ww > zw:
+                rows.append(cur)
+                cur, cw = [w], ww
+            else:
+                cw += (gp if cur else 0) + ww
+                cur.append(w)
+        rows.append(cur)
+        return rows, s0
+
     def wd(self, tok, size, path=BLK, color=None):
         return dict(text=tok['text'], path=path, size=size, start=tok['start'], color=color or WHITE,
                     stroke=0.029, tracking=0.022 * size, gapk=0.10)
@@ -320,10 +383,14 @@ class Project:
         z0 = tuple(zone) if zone else ((560, 1052, cy0 + 12) if right else (W - 1052, W - 560, cy0 + 12))
         zm = (548, 1083, cy0 - 34) if right else (max(W - 1083, 4), W - 548, cy0 - 34)  # money: tight in the corner
         align = 'right' if right else 'left'
-        band = self.cfg.get('hook_layout', 'corner') == 'band'
+        layout = self.cfg.get('hook_layout', 'fill')
+        band = layout == 'band'
         BAND, BANDK = 105, 125                      # natural size of a band row (shrunk to fit the width)
         zb = tuple(zone) if zone else (40, 1040, cy0 + 12)
         toks = self.hook_tokens()
+        if layout == 'fill':
+            self.build_hook_fill(toks, z0, align)
+            return
         groups = self.hook_groups(toks)
         self.hook_plan = []
         for g in groups:
@@ -360,6 +427,35 @@ class Project:
             self.hookg.append(new)
             self.items += new
             self.hook_plan.append(' '.join(x['text'] for x in t) + ('   [KEY]' if g['key'] else ''))
+        self.schedule_hook()
+
+    def build_hook_fill(self, toks, z0, align):
+        """Hook layout "fill": 3-4 words on screen at once, one common size per group, words appear as they are said."""
+        self.hook_plan = []
+        for g in self.fill_groups(toks):
+            ze = next((z for z in self.cfg.get('hook_zones', []) if z['from'] <= g[0]['start'] + 0.03 < z['to']), None)
+            zn, al = z0, align
+            if ze:
+                zn, al = tuple(ze['zone']), ze.get('side', 'right')
+            zw = zn[1] - zn[0]
+            ns = 0.2 * zw                                   # natural size follows the width of the free area
+            ws = []
+            for t in g:
+                if t['key']:
+                    d = self.wd(t, ns * 1.08, CIN, t['color'])
+                else:
+                    d = self.wd(t, ns)
+                d['stroke'], d['tracking'] = 0.022, 0.02 * d['size']      # a bit less bold than the corner layout
+                ws.append(d)
+            rows, s0 = self.fill_rows(ws, zw)
+            if ze and ze.get('band') and s0 < 0.6:
+                # a very long word would make the whole group tiny in this narrow area: use one row in a wide band
+                # (above the heads) instead, at the same natural size
+                zn, al, rows = tuple(ze['band']), 'center', [ws]
+            new = build_zone(rows, zn[0], zn[1], zn[2], al, 0, 0, fade=0.08, anim=0.18, s0=0.5, gap=-4, uniform=True)
+            self.hookg.append(new)
+            self.items += new
+            self.hook_plan.append(' '.join(x['text'] for x in g))
         self.schedule_hook()
 
     def schedule_hook(self):

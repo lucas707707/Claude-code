@@ -15,7 +15,7 @@ The numbers are what the user finally approved ("dit is echt perfect").
 - Right-edge and bottom UI of TikTok/Reels: keep important text off the very bottom; the hook is in the upper
   part of the picture so it clears the buttons.
 
-## Hook
+## Hook (layout "corner", clip 1) — see below for the newer "fill" layout
 - Grouping: consecutive non-key words in groups of up to 3 (row 1: 2 words, row 2: 1 word; a first word with ≥ 9
   letters sits alone on row 1). Key words (money, `key_words`) form their own group of 1–2 rows.
 - Sizes (natural, shrunk to fit the zone width): row 1 = 120, row 2 = 190, key words 260 (shorter word) and 200 (longer).
@@ -50,9 +50,9 @@ The numbers are what the user finally approved ("dit is echt perfect").
 **Clip 2** – looped 15 s clip; close-up of a man in a white sweater, then a wide shot of two men at a table with a
 crowd behind them. Only the two men count; the crowd may be covered. Hook 0–5.24 s:
 ```json
-{"hook_end": 5.24, "hook_side": "left",
+{"hook_end": 5.24, "hook_side": "left", "hook_layout": "fill",
  "hook_zones": [{"from": 0, "to": 2.733, "side": "left", "zone": [28, 540, 567]},
-                {"from": 2.733, "to": 99, "side": "center", "zone": [370, 785, 615]}],
+                {"from": 2.733, "to": 99, "side": "center", "zone": [370, 785, 615], "band": [60, 1020, 567]}],
  "key_words": ["amazing", "replace", "replaceable"],
  "cuts": [2.733, 9.867, 13.333, 15.2], "wide": [[2.733, 9.867]],
  "post_y": [0.55, 0.55], "post_wide": {"zone": [80, 1000], "bottom": 0.47},
@@ -61,3 +61,12 @@ crowd behind them. Only the two men count; the crowd may be covered. Hook 0–5.
 Notes: when `post_y` has equal values the captions are not cut at camera cuts (their position does not change),
 which avoids one-word flashes. Group builder splits non-key words evenly (no lonely words), never across a cut,
 and joins a lonely last word to the key group before it. Neighbouring words with identical timestamps are spread.
+
+## Hook layout "fill" (default since clip 2)
+- Words are grouped 3–4 per screen (even split, never across a camera cut), packed into rows that fit the free area, one common
+  size for the whole group (`ns = 0.2 × zone width`, shrunk only when one word does not fit). Key words: Cinzel, gold/green, 1.08 × size.
+- Outline 0.022 × size, tracking +0.02 × size, word gap 0.10 × size. Same timing as the corner layout (`schedule_hook`).
+- `band`: when the longest word needs a scale < 0.6 in the narrow area (e.g. "REPLACEABLE" between two people), the group is
+  shown as one wide row instead (above the heads), so it is not tiny.
+- Why: with the corner layout key words were up to 260 px next to 45 px words, and groups of 1–2 words left the corner
+  empty. The user asked for less size/weight contrast, 3–4 words at once and text that matches the speech.

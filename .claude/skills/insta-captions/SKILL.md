@@ -32,8 +32,8 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 7. If the repository has a stop hook asking to commit new files, commit and push the mp4 to the working branch (no pull request unless asked).
 
 ## The look (defaults, already approved)
-- **Hook**: only on the free side of the speaker, upper corner, inside the picture. Each screen has at most 3 words: row 1 two words side by side (the first more toward the middle, the second in the corner), row 2 one word below (a very long first word goes alone on row 1). A new group is a fresh screen; never stack more words. All white, Inter Black, extra bold (outline) and tight. Words follow the speech beat one by one with a ~0.16 s zoom/fade-in and a soft cross-fade between groups.
-- **Key words** (money, the core claim): cinematic serif (Cinzel Black), **green** for money, **gold** for other key words, stacked big on two rows; "$22" is pulled into the very corner with "BILLION" tight underneath.
+- **Hook (default layout `fill`)**: only in the free area next to the main person(s) (or between two people), inside the picture. **3–4 words on screen at once, never one word alone**; the group builds up word by word at the moment each word is said, then the next group takes over with a soft cross-fade. All words of a group have **one common size**, so nothing is huge next to something tiny; the size follows the width of the free area (0.2 × width) and is only shrunk if one long word needs it. White Inter Black, a bit less bold than before (outline 0.022), tight. Key words (money, core claim) use the cinematic serif (Cinzel Black, gold, money green) at about the same size, not bigger. If a very long word would make a group tiny in a narrow area, that group goes in one wide row (`band` in `hook_zones`, e.g. above the heads).
+- **Older layout `corner`** (clip 1 look): 2+1 rows in the upper corner, key words huge and stacked ("$22" in the very corner with "BILLION" tight underneath). Only use it when the user asks for that look; users later found its size contrast too extreme ("bijna te groot" next to "heel dun") and single-word screens too empty.
 - **After the hook**: one caption at a time, centred, one line, Inter ExtraBold white, **max 2 long or 3 short words** per caption, each word pops in with a quick zoom, emphasis words yellow, on screen at least ~0.5 s where the speech allows. **Height: by default just above the middle of the picture** (`post_y` 0.451). **Talking head: just under the person's head** (not over the face; raise `post_y` until the caption clears the chin). **Two people at a table / wide shot: just above the table** (`post_wide` with `bottom`), same size and same single line as everywhere else. Only change the height, not the look: a slight overlap with bodies is fine, heads are not. **Stacking two words under each other (`stack`) is an option for when the user asks for it; it is not the default.**
 - Everything stays inside the real picture and away from the platform buttons (right edge, bottom).
 
@@ -41,6 +41,7 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 - No zoom or reframe of the video, no rounded card or border, no overlay boxes. The user rejected all of these.
 - Don't pile several lines of text on screen or scroll them up; it looked "mega slecht". One group at a time.
 - Don't delay text far behind the voice to make it last longer; it feels unnatural and off-beat (at most ~0.25 s late in the hook, 0.2 s after).
+- Hook screens with one huge word or one tiny thin word were rejected: keep one size per group, 3–4 words, and match the spoken timing.
 - A 1 px outline is invisible, so "bolder" must be a clear step, but not so thick that letters merge ("GET" became unreadable).
 - Speech at ~4 words per second means a 2–3 word caption can only average ~0.5 s on screen. That is arithmetic, not a bug; say so and offer bigger captions or a sliding window instead of silently breaking the word limit.
 - Words spoken just before a camera cut flash by; the renderer shows them at the cut.
@@ -51,7 +52,9 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 ## Tuning cheat-sheet (constants in `render_captions.py`)
 | User says | Change |
 |---|---|
-| hook text bigger / bolder | `R1, R2, KBIG, KSMALL`; `stroke=` in `wd()` (0.029 default; 0.034 starts merging letters) |
+| hook text bigger / smaller | `ns = 0.2 * zw` in `build_hook_fill()` (corner layout: `R1, R2, KBIG, KSMALL`) |
+| hook bolder / less bold | `d['stroke']` in `build_hook_fill()` (0.022; the corner layout used 0.029; 0.034 starts merging letters) |
+| more / fewer words per hook screen | the `4` in `fill_groups()` |
 | letters closer / words closer | `tracking` and `gapk` in `wd()` |
 | hook words longer on screen | `VIS` / `LAG` in `schedule_hook()` (trade-off: later = less on the beat) |
 | smoother / snappier animation | `ANIM`, `XFADE`, `FOUT` in `schedule_hook()`; `anim` in `build_post()` |
