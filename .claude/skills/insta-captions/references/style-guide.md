@@ -55,7 +55,7 @@ crowd behind them. Only the two men count; the crowd may be covered. Hook 0–5.
                 {"from": 2.733, "to": 99, "side": "center", "zone": [370, 785, 615]}],
  "key_words": ["amazing", "replace", "replaceable"],
  "cuts": [2.733, 9.867, 13.333, 15.2], "wide": [[2.733, 9.867]],
- "post_y": [0.55, 0.55], "post_wide": {"zone": [385, 765], "bottom": 0.46, "stack": true},
+ "post_y": [0.55, 0.55], "post_wide": {"zone": [80, 1000], "bottom": 0.47},
  "replace": {}, "emphasis": ["amazing", "replace", "value", "40", "busting"]}
 ```
 Notes: when `post_y` has equal values the captions are not cut at camera cuts (their position does not change),

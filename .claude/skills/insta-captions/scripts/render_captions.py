@@ -26,11 +26,11 @@ config.json (all times in seconds):
   "hook_zone": [40, 1040, 567],              # optional [x0, x1, y_top] override of the hook area
   "hook_zones": [{"from": 0, "to": 2.7, "side": "left"|"right"|"center", "zone": [28, 520, 567]}, ...],
                                              # optional: a different free area per shot (time range, side, [x0,x1,y_top])
-  "post_wide": {"zone": [385, 765], "bottom": 0.46, "stack": true},
+  "post_wide": {"zone": [80, 1000], "bottom": 0.47},
                                              # optional: in the wide shots put the simple captions in this x-range
                                              #   (e.g. in the gap BETWEEN two people). "bottom": the caption block ends at
                                              #   this height (e.g. just above a table); or "y": top of the block.
-                                             #   "stack": if the words do not fit side by side, put one word per row
+                                             #   "stack": true  (only on request!) puts words under each other if they do not fit side by side
   "post_y":    [0.451, 0.451]                # optional: caption top as a fraction of the picture height
                                              #   [normal shots, wide shots]. Default = just above the middle of the picture.
                                              #   Talking head: put it just UNDER the head (e.g. 0.55 when the chin is at ~0.5)
