@@ -19,7 +19,18 @@ config.json (all times in seconds):
   "replace":   {"cop": "cup"},               # fix transcript mistakes (lowercase word -> text)
   "cuts":      [5.53, 9.13],                 # camera cuts (from prepare.py probe.json)
   "wide":      [[5.53, 9.13]],               # optional: time ranges where faces sit LOWER in the frame
-  "content":   [555, 1364]                   # optional: y-range of the real picture (from probe.json)
+  "content":   [555, 1364],                  # optional: y-range of the real picture (from probe.json)
+  "hook_layout": "corner",                   # "corner" (default): 2+1 rows in the free corner next to ONE speaker
+                                             # "band": ONE row in a band along the top of the picture, for clips
+                                             #         with no free side (close-ups, many people, wide shots)
+  "hook_zone": [40, 1040, 567],              # optional [x0, x1, y_top] override of the hook area
+  "hook_zones": [{"from": 0, "to": 2.7, "side": "left"|"right"|"center", "zone": [28, 520, 567]}, ...],
+                                             # optional: a different free area per shot (time range, side, [x0,x1,y_top])
+  "post_wide": {"zone": [320, 800], "y": 0.12},
+                                             # optional: in the wide shots put the simple captions in this x-range
+                                             #   (e.g. BETWEEN two people) at this height (fraction of the picture)
+  "post_y":    [0.451, 0.513]                # optional: caption top as a fraction of the picture height
+                                             #   [normal shots, wide shots]; raise it when faces sit low
 }
 Everything else (sizes, timings) has defaults tuned with the user, see references/style-guide.md.
 """
@@ -184,6 +195,10 @@ def load_words(path, replace):
                 words[-1]['e'] = w['e']
                 continue
             words.append(dict(t=t, s=w['s'], e=w['e']))
+    # speech recognition sometimes gives two neighbouring words the same start time; spread them out
+    for i in range(1, len(words) - 1):
+        if words[i]['s'] >= words[i + 1]['s'] - 0.02 and words[i]['e'] >= words[i]['s']:
+            words[i]['s'] = max(words[i - 1]['s'] + 0.1, words[i + 1]['s'] - 0.25)
     for w in words:
         key = letters(w['t'])
         if key in replace:
@@ -205,6 +220,7 @@ class Project:
         self.side = cfg.get('hook_side', 'right')
         self.cuts = [float(c) for c in cfg.get('cuts', [])]
         self.wide = [tuple(r) for r in cfg.get('wide', [])]
+        self.cap_cuts = []                                  # set below once post_y is known
         c = cfg.get('content')
         if not c:
             pj = os.path.join(os.path.dirname(os.path.abspath(cfg['words'])), 'probe.json')
@@ -215,10 +231,13 @@ class Project:
                 c = [0, H]
         self.cy0, self.cy1 = int(c[0]), int(c[1])
         self.ch = self.cy1 - self.cy0
+        self.post_y = cfg.get('post_y', [0.451, 0.513])
         self.key_words = {letters(k) for k in cfg.get('key_words', [])}
         self.emphasis = {letters(k) for k in cfg.get('emphasis', [])}
         replace = {letters(k): v for k, v in cfg.get('replace', {}).items()}
         self.words = load_words(cfg['words'], replace)
+        self.cap_cuts = [c for c in self.cuts
+                         if self.post_y[0] != self.post_y[1] and self.is_wide(c - 0.01) != self.is_wide(c + 0.01)]
         self.duration = self._duration()
         self.items = []
         self.hookg = []
@@ -240,27 +259,50 @@ class Project:
             unit = letters(w['t']) in UNITS and prev_key
             is_key = money or unit or letters(w['t']) in self.key_words
             color = GREEN if (money or unit) else GOLD
-            out.append(dict(text=display(w['t']).upper(), start=max(w['s'] - 0.03, -0.03),
+            st = max(w['s'] - 0.03, -0.03)
+            for cc in self.cuts:                       # spoken just before a cut -> shown at the cut
+                if 0 < cc - w['s'] < 0.3:
+                    st = cc
+            out.append(dict(text=display(w['t']).upper(), start=st,
                             key=is_key, color=color, n=len(letters(w['t'])) or len(c)))
             prev_key = is_key and (money or unit)
         return out
 
     def hook_groups(self, toks):
-        """Non-key words in groups of up to 3; key words (money, claims) in their own stacked group."""
+        """Non-key words in balanced groups of up to 3 (no lonely single words if it can be avoided, and
+        never across a camera cut); key words (money, claims) in their own stacked group of 1-2 words."""
+        def crosses(a, b):
+            return any(a['start'] < c <= b['start'] for c in self.cuts)
         groups, i = [], 0
         while i < len(toks):
             if toks[i]['key']:
                 run = [toks[i]]
-                while i + len(run) < len(toks) and toks[i + len(run)]['key'] and len(run) < 2:
+                while (i + len(run) < len(toks) and toks[i + len(run)]['key'] and len(run) < 2
+                       and not crosses(run[-1], toks[i + len(run)])):
                     run.append(toks[i + len(run)])
                 groups.append(dict(key=True, toks=run))
                 i += len(run)
             else:
-                run = []
-                while i + len(run) < len(toks) and not toks[i + len(run)]['key'] and len(run) < 3:
-                    run.append(toks[i + len(run)])
-                groups.append(dict(key=False, toks=run))
-                i += len(run)
+                j = i
+                while j < len(toks) and not toks[j]['key'] and not (j > i and crosses(toks[j - 1], toks[j])):
+                    j += 1
+                run = toks[i:j]
+                n = -(-len(run) // 3)
+                base, extra = divmod(len(run), n)
+                k = 0
+                for q in range(n):
+                    size = base + (1 if q < extra else 0)
+                    groups.append(dict(key=False, toks=run[k:k + size]))
+                    k += size
+                i = j
+        # a lonely last word after a key word joins that key group (e.g. "REPLACING" + "THEM")
+        if (len(groups) >= 2 and not groups[-1]['key'] and len(groups[-1]['toks']) == 1
+                and groups[-2]['key'] and len(groups[-2]['toks']) == 1
+                and not crosses(groups[-2]['toks'][0], groups[-1]['toks'][0])):
+            t = groups[-1]['toks'][0]
+            t['key'], t['color'] = True, groups[-2]['toks'][0]['color']
+            groups[-2]['toks'].append(t)
+            groups.pop()
         return groups
 
     def wd(self, tok, size, path=BLK, color=None):
@@ -275,12 +317,18 @@ class Project:
         z0 = tuple(zone) if zone else ((560, 1052, cy0 + 12) if right else (W - 1052, W - 560, cy0 + 12))
         zm = (548, 1083, cy0 - 34) if right else (max(W - 1083, 4), W - 548, cy0 - 34)  # money: tight in the corner
         align = 'right' if right else 'left'
+        band = self.cfg.get('hook_layout', 'corner') == 'band'
+        BAND, BANDK = 105, 125                      # natural size of a band row (shrunk to fit the width)
+        zb = tuple(zone) if zone else (40, 1040, cy0 + 12)
         toks = self.hook_tokens()
         groups = self.hook_groups(toks)
         self.hook_plan = []
         for g in groups:
             t = g['toks']
-            gap, zn = -8, z0
+            gap, zn, al = -8, z0, align
+            ze = next((z for z in self.cfg.get('hook_zones', []) if z['from'] <= t[0]['start'] + 0.03 < z['to']), None)
+            if ze:                                    # a different free area in this shot
+                zn, al = tuple(ze['zone']), ze.get('side', 'right')      # 'left', 'right' or 'center'
             if g['key']:
                 if len(t) == 1:
                     rows = [[self.wd(t[0], KBIG, CIN, t[0]['color'])]]
@@ -289,7 +337,7 @@ class Project:
                     sa, sb = (KBIG, KSMALL) if a['n'] <= b['n'] else (KSMALL, KBIG)
                     rows = [[self.wd(a, sa, CIN, a['color'])], [self.wd(b, sb, CIN, b['color'])]]
                 if any('$' in x['text'] for x in t):
-                    zn, gap = zm, -104        # the "$" has a long descender: pull row 2 up tight
+                    zn, gap = (tuple(ze.get('money_zone', ze['zone'])) if ze else zm), -104   # "$" has a long descender: pull row 2 up tight
             else:
                 a = t[0]
                 long_first = a['n'] >= 9
@@ -301,7 +349,11 @@ class Project:
                             else [[self.wd(a, R1), self.wd(t[1], R1)]])
                 else:
                     rows = [[self.wd(a, R1)]]
-            new = build_zone(rows, zn[0], zn[1], zn[2], align, 0, 0, fade=0.08, anim=0.18, s0=0.5, gap=gap)
+            if band:                                  # one row, all words of the group side by side
+                rows = [[self.wd(x, BANDK if x['key'] else BAND, CIN if x['key'] else BLK, x['color'] if x['key'] else None)
+                         for x in t]]
+                zn, gap = (tuple(ze['zone']) if ze else zb), -8
+            new = build_zone(rows, zn[0], zn[1], zn[2], al, 0, 0, fade=0.08, anim=0.18, s0=0.5, gap=gap)
             self.hookg.append(new)
             self.items += new
             self.hook_plan.append(' '.join(x['text'] for x in t) + ('   [KEY]' if g['key'] else ''))
@@ -336,6 +388,13 @@ class Project:
         c = [c for c in self.cuts if c > t + 0.001]
         return min(c) if c else 99
 
+    def cap_shot_of(self, t):
+        return sum(1 for c in self.cap_cuts if c <= t + 0.001)
+
+    def cap_next_cut(self, t):
+        c = [c for c in self.cap_cuts if c > t + 0.001]
+        return min(c) if c else 99
+
     def is_wide(self, t):
         return any(a <= t < b for a, b in self.wide)
 
@@ -343,7 +402,7 @@ class Project:
         post = [dict(w) for w in self.words if w['s'] >= self.hook_end - 0.05]
         # words that start just before a camera cut would flash by; show them at the cut
         for w in post:
-            for c in self.cuts:
+            for c in self.cap_cuts:
                 if 0 < c - w['s'] < 0.35:
                     w['e'] = max(w['e'], c + 0.12)
                     w['s'] = c
@@ -352,7 +411,7 @@ class Project:
             return 1.5 if len(re.sub(r'[^A-Za-z0-9$]', '', w['t'])) >= 6 else 1.0
 
         def crosses(a, b):
-            return any(a['s'] < c <= b['s'] + 0.001 for c in self.cuts)
+            return any(a['s'] < c <= b['s'] + 0.001 for c in self.cap_cuts)
 
         chunks, cur, tot = [], [], 0.0            # max 2 long words or 3 short words per caption
         for w in post:
@@ -372,10 +431,10 @@ class Project:
         MIN_DWELL, MAX_LAG = 0.5, 0.2             # borrow a little time so short captions stay readable
         tl, pg, ps = [], None, None
         for ch in chunks:
-            sh = self.shot_of(ch[0]['s'])
+            sh = self.cap_shot_of(ch[0]['s'])
             sp = ch[0]['s'] - 0.07
             gs = sp if pg is None or sh != ps else min(max(sp, pg + MIN_DWELL), sp + MAX_LAG)
-            nc = self.next_cut(ch[0]['s'])
+            nc = self.cap_next_cut(ch[0]['s'])
             if gs > nc - 0.4:
                 gs = max(sp, nc - 0.4)
             tl.append((gs, sh, sp))
@@ -384,7 +443,7 @@ class Project:
         for k, ch in enumerate(chunks):
             gs, sh, sp = tl[k]
             nxt = tl[k + 1][0] if k + 1 < len(chunks) and tl[k + 1][1] == sh else 99
-            ge = min(nxt, self.next_cut(ch[0]['s']), ch[-1]['e'] + (gs - sp) + 0.9)
+            ge = min(nxt, self.cap_next_cut(ch[0]['s']), ch[-1]['e'] + (gs - sp) + 0.9)
             self.dwell.append(ge - gs)
             lag = gs - sp
             specs = []
@@ -393,8 +452,14 @@ class Project:
                 is_emph = lc in self.emphasis or '$' in w['t'] or re.fullmatch(r'\d[\d,.]*', core(w['t'])) is not None
                 specs.append(dict(text=display(w['t']), path=XB, size=74, start=max(w['s'] + lag - 0.06, gs),
                                   color=YELLOW if is_emph else WHITE))
-            y = self.cy0 + int(self.ch * (0.513 if self.is_wide(ch[0]['s']) else 0.451))
-            self.items += build_zone([specs], 80, 1000, y, 'center', gs, ge, fade=0.10, anim=0.10, s0=0.6, gap=0)
+            pw = self.cfg.get('post_wide')
+            if pw and self.is_wide(ch[0]['s']):          # wide shot: keep captions in the free gap between the people
+                x0, x1 = pw['zone']
+                y = self.cy0 + int(self.ch * pw['y'])
+            else:
+                x0, x1 = 80, 1000
+                y = self.cy0 + int(self.ch * (self.post_y[1] if self.is_wide(ch[0]['s']) else self.post_y[0]))
+            self.items += build_zone([specs], x0, x1, y, 'center', gs, ge, fade=0.10, anim=0.10, s0=0.6, gap=0)
 
     # ----- drawing ----------------------------------------------------------
     @staticmethod

@@ -40,3 +40,24 @@ The numbers are what the user finally approved ("dit is echt perfect").
 - Three captions stacked and scrolling up, or alternating lines, dimmed older lines: cluttered, hard to read.
 - Playfair italic serif for key words: replaced by Cinzel (more cinematic / medieval, same readability).
 - Serif italic + bold sans mix everywhere: user wanted ONE simple font after the hook.
+
+## Worked examples (config.json)
+**Clip 1** – one speaker in a chair, free space on his right, hook 0–5.53 s:
+```json
+{"hook_end": 5.5333, "hook_side": "right", "key_words": ["presidential", "pardon"],
+ "cuts": [5.533, 9.133, 24.617, 27.767, 35.75], "wide": [[5.533, 9.133], [24.617, 27.767], [35.75, 99]]}
+```
+**Clip 2** – looped 15 s clip; close-up of a man in a white sweater, then a wide shot of two men at a table with a
+crowd behind them. Only the two men count; the crowd may be covered. Hook 0–5.24 s:
+```json
+{"hook_end": 5.24, "hook_side": "left",
+ "hook_zones": [{"from": 0, "to": 2.733, "side": "left", "zone": [28, 540, 567]},
+                {"from": 2.733, "to": 99, "side": "center", "zone": [370, 785, 615]}],
+ "key_words": ["amazing", "replace", "replacing"],
+ "cuts": [2.733, 9.867, 13.333, 15.2], "wide": [[2.733, 9.867]],
+ "post_y": [0.55, 0.55], "post_wide": {"zone": [385, 765], "y": 0.12},
+ "replace": {}, "emphasis": ["amazing", "replace", "value", "40", "busting"]}
+```
+Notes: when `post_y` has equal values the captions are not cut at camera cuts (their position does not change),
+which avoids one-word flashes. Group builder splits non-key words evenly (no lonely words), never across a cut,
+and joins a lonely last word to the key group before it. Neighbouring words with identical timestamps are spread.

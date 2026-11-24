@@ -15,13 +15,14 @@ Turn a raw clip into a finished captioned video: **luxe hook captions** for the 
 1. The clip (a file, or a Google Drive link: `curl -L "https://drive.google.com/uc?export=download&id=FILE_ID"`).
 2. **Where the hook ends** (seconds, or "tot de riser stopt"). If they don't know: propose the first camera cut or the first clear pause, and say that this is your proposal.
 3. Caption language (default: the spoken language) and swear words (default: censor with asterisks like `f***ed`, so it stays readable but platforms don't flag it).
+4. **Who the main person(s) are.** Only they matter for placement: text may cover background people, but **never a main person's head**. If the user typed what is said, use their wording to fix transcript mistakes.
 
 ## Workflow
 Scripts live in `scripts/` next to this file. Use a work folder in the scratchpad.
 
-1. **Prepare**: `python3 scripts/prepare.py CLIP --work WORK` gives `probe.json` (the real picture's y-range, camera cuts) and `contact.jpg`. **Look at contact.jpg**: where does the speaker sit, which side is free (the hook side), in which shots do faces sit lower (two people / wide shot, listed as `wide` ranges)?
+1. **Prepare**: `python3 scripts/prepare.py CLIP --work WORK` gives `probe.json` (the real picture's y-range, camera cuts) and `contact.jpg`. **Look at contact.jpg and then at bigger frames of every shot**: where do the main people sit and where is free space *per shot*? One speaker with free space beside them → `hook_side`. Different shots need different spots → `hook_zones` (e.g. left of the speaker in the close-up, in the gap BETWEEN two people in a wide shot). No free side at all → `hook_layout: "band"` (one row along the top). Shots where people sit lower/farther away are `wide` ranges.
 2. **Transcribe**: `python3 scripts/transcribe.py WORK/a.wav WORK/words.json` (needs `pip install faster-whisper`; installing may need the user's OK; the first run downloads a ~3 GB model, wait out a 429 rate limit or use `--model medium`). Show the transcript to the user and fix mistakes via `replace` in the config (e.g. "cop" → "cup") before rendering. Names, slang and swear words are often misheard.
-3. **Config**: write `WORK/config.json` (fields documented at the top of `scripts/render_captions.py`): `hook_end`, `hook_side`, `key_words` (the 1–3 most important claim words for the hook; money like `$22 billion` is detected automatically), `emphasis` (yellow words after the hook), `replace`, `cuts`, `wide`.
+3. **Config**: write `WORK/config.json` (fields documented at the top of `scripts/render_captions.py`): `hook_end`, `hook_side`, `hook_zones`, `hook_layout`, `key_words` (the 1–3 most important claim words for the hook; money like `$22 billion` is detected automatically), `emphasis` (yellow words after the hook), `replace`, `cuts`, `wide`, `post_y`, `post_wide`.
 4. **Plan**: `python3 scripts/render_captions.py plan config.json`. Check that the hook groups read naturally and the right words are `[KEY]`.
 5. **Preview**: `... preview config.json WORK/prev T1 T2 ...` and **look at the images**: hook text must be in the free space and never over the face; nothing on the black bars; nothing cut off at the edge. Check several moments in the hook and several in the rest (including wide shots). Fix zone/side/wide ranges and repeat.
 6. **Render**: `... render config.json`. Then pull 8–12 frames from the *final mp4* and look at them. Deliver with the file-send tool (users can't browse the sandbox) and keep the file under 30 MB (typical output is about 5 MB).
@@ -40,6 +41,8 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 - A 1 px outline is invisible, so "bolder" must be a clear step, but not so thick that letters merge ("GET" became unreadable).
 - Speech at ~4 words per second means a 2–3 word caption can only average ~0.5 s on screen. That is arithmetic, not a bug; say so and offer bigger captions or a sliding window instead of silently breaking the word limit.
 - Words spoken just before a camera cut flash by; the renderer shows them at the cut.
+- **Never put text over a main person's head.** In a wide shot with two people at a table, hook and captions go in the gap *between* them at head height (`hook_zones` + `post_wide`), with a margin on both sides: a person leaning forward moves their head 50+ px, so check several frames, not one. A little overlap with a body or hands is acceptable only if it truly cannot be avoided.
+- Placement is judged from big frames, not the contact sheet; the first version of a placement was wrong twice (text touching a cap, captions across a man's arms).
 
 ## Tuning cheat-sheet (constants in `render_captions.py`)
 | User says | Change |
