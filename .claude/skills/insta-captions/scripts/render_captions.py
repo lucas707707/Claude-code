@@ -26,11 +26,14 @@ config.json (all times in seconds):
   "hook_zone": [40, 1040, 567],              # optional [x0, x1, y_top] override of the hook area
   "hook_zones": [{"from": 0, "to": 2.7, "side": "left"|"right"|"center", "zone": [28, 520, 567]}, ...],
                                              # optional: a different free area per shot (time range, side, [x0,x1,y_top])
-  "post_wide": {"zone": [320, 800], "y": 0.12},
+  "post_wide": {"zone": [385, 765], "bottom": 0.46, "stack": true},
                                              # optional: in the wide shots put the simple captions in this x-range
-                                             #   (e.g. BETWEEN two people) at this height (fraction of the picture)
-  "post_y":    [0.451, 0.513]                # optional: caption top as a fraction of the picture height
-                                             #   [normal shots, wide shots]; raise it when faces sit low
+                                             #   (e.g. in the gap BETWEEN two people). "bottom": the caption block ends at
+                                             #   this height (e.g. just above a table); or "y": top of the block.
+                                             #   "stack": if the words do not fit side by side, put one word per row
+  "post_y":    [0.451, 0.451]                # optional: caption top as a fraction of the picture height
+                                             #   [normal shots, wide shots]. Default = just above the middle of the picture.
+                                             #   Talking head: put it just UNDER the head (e.g. 0.55 when the chin is at ~0.5)
 }
 Everything else (sizes, timings) has defaults tuned with the user, see references/style-guide.md.
 """
@@ -231,13 +234,13 @@ class Project:
                 c = [0, H]
         self.cy0, self.cy1 = int(c[0]), int(c[1])
         self.ch = self.cy1 - self.cy0
-        self.post_y = cfg.get('post_y', [0.451, 0.513])
+        self.post_y = cfg.get('post_y', [0.451, 0.451])
         self.key_words = {letters(k) for k in cfg.get('key_words', [])}
         self.emphasis = {letters(k) for k in cfg.get('emphasis', [])}
         replace = {letters(k): v for k, v in cfg.get('replace', {}).items()}
         self.words = load_words(cfg['words'], replace)
         self.cap_cuts = [c for c in self.cuts
-                         if self.post_y[0] != self.post_y[1] and self.is_wide(c - 0.01) != self.is_wide(c + 0.01)]
+                         if (self.post_y[0] != self.post_y[1] or cfg.get('post_wide')) and self.is_wide(c - 0.01) != self.is_wide(c + 0.01)]
         self.duration = self._duration()
         self.items = []
         self.hookg = []
@@ -453,13 +456,28 @@ class Project:
                 specs.append(dict(text=display(w['t']), path=XB, size=74, start=max(w['s'] + lag - 0.06, gs),
                                   color=YELLOW if is_emph else WHITE))
             pw = self.cfg.get('post_wide')
+            rows, x0, x1, y_bottom = [specs], 80, 1000, None
             if pw and self.is_wide(ch[0]['s']):          # wide shot: keep captions in the free gap between the people
                 x0, x1 = pw['zone']
-                y = self.cy0 + int(self.ch * pw['y'])
+                if pw.get('stack') and len(specs) > 1:
+                    def row_w(r):
+                        return sum(font(XB, 74).getlength(sp['text']) for sp in r) + 0.26 * 74 * (len(r) - 1)
+                    zw = x1 - x0
+                    if row_w(specs) > zw:                 # does not fit side by side: use two rows, or one word per row
+                        splits = [([specs[:k], specs[k:]]) for k in range(1, len(specs))]
+                        best = min(splits, key=lambda r: max(row_w(r[0]), row_w(r[1])))
+                        rows = best if max(row_w(best[0]), row_w(best[1])) <= zw * 1.1 else [[sp] for sp in specs]
+                if 'bottom' in pw:
+                    y_bottom = self.cy0 + int(self.ch * pw['bottom'])
+                    y = 0
+                else:
+                    y = self.cy0 + int(self.ch * pw['y'])
             else:
-                x0, x1 = 80, 1000
                 y = self.cy0 + int(self.ch * (self.post_y[1] if self.is_wide(ch[0]['s']) else self.post_y[0]))
-            self.items += build_zone([specs], x0, x1, y, 'center', gs, ge, fade=0.10, anim=0.10, s0=0.6, gap=0)
+            if y_bottom is not None:                     # measure the block, then put its bottom on y_bottom
+                probe = build_zone(rows, x0, x1, 0, 'center', 0, 1, fade=0.1, anim=0.1, s0=0.6, gap=0)
+                y = y_bottom - max(it.y + it.sprite.height - 30 for it in probe)
+            self.items += build_zone(rows, x0, x1, y, 'center', gs, ge, fade=0.10, anim=0.10, s0=0.6, gap=0)
 
     # ----- drawing ----------------------------------------------------------
     @staticmethod

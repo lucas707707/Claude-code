@@ -11,18 +11,21 @@ Turn a raw clip into a finished captioned video: **luxe hook captions** for the 
 - Reply in the user's own language (so far Dutch) with **simple words and no jargon**; many users of this skill are creators without coding knowledge. If something is unclear, **ask** instead of guessing. Say plainly when something is a limit or a guess, and never claim you "watched" a video when you only inspected still frames.
 - "De hoek" / "the hook" = the intro part. "Net iets langer in beeld" = a little longer on screen. Change **one thing at a time** and keep everything else identical; unrequested changes annoy users ("niet allemaal raar gaan veranderen").
 
-## What you need from the user
-1. The clip (a file, or a Google Drive link: `curl -L "https://drive.google.com/uc?export=download&id=FILE_ID"`).
-2. **Where the hook ends** (seconds, or "tot de riser stopt"). If they don't know: propose the first camera cut or the first clear pause, and say that this is your proposal.
-3. Caption language (default: the spoken language) and swear words (default: censor with asterisks like `f***ed`, so it stays readable but platforms don't flag it).
-4. **Who the main person(s) are.** Only they matter for placement: text may cover background people, but **never a main person's head**. If the user typed what is said, use their wording to fix transcript mistakes.
+## Step 0: ask the user a few questions first
+The skill does not have to be fully automatic; a few short questions beat a wrong guess. Ask them **together, in simple Dutch** (use the AskUserQuestion tool if you have it, otherwise plain text), and skip anything the user already told you:
+1. **The clip** (a file, or a Google Drive link: `curl -L "https://drive.google.com/uc?export=download&id=FILE_ID"`).
+2. **Where does the hook end?** Ask for the last sentence of the hook, or the second. If they don't know: propose the first camera cut or the first clear pause and say that this is your proposal. (If the clip is a loop, the hook is the start that comes back around.)
+3. **Who are the main person(s)?** Only they matter for placement: text may cover background people, but **never a main person's head**.
+4. **Which words are the most important in the hook?** Suggest 2–4 yourself (money, the core claim) and let them correct you.
+5. Only if unclear: caption language (default: the spoken language) and swear words (default: censor with asterisks like `f***ed`).
+After transcribing, **show the transcript and ask them to point out wrong words**, especially at the end of the hook; speech recognition mishears slang and similar words ("replaceable" became "replacing them"). When the user typed what is said, use their wording over the transcript.
 
 ## Workflow
 Scripts live in `scripts/` next to this file. Use a work folder in the scratchpad.
 
-1. **Prepare**: `python3 scripts/prepare.py CLIP --work WORK` gives `probe.json` (the real picture's y-range, camera cuts) and `contact.jpg`. **Look at contact.jpg and then at bigger frames of every shot**: where do the main people sit and where is free space *per shot*? One speaker with free space beside them → `hook_side`. Different shots need different spots → `hook_zones` (e.g. left of the speaker in the close-up, in the gap BETWEEN two people in a wide shot). No free side at all → `hook_layout: "band"` (one row along the top). Shots where people sit lower/farther away are `wide` ranges.
+1. **Prepare**: `python3 scripts/prepare.py CLIP --work WORK` gives `probe.json` (the real picture's y-range, camera cuts) and `contact.jpg`. **Look at contact.jpg and then at bigger frames of every shot**: where do the main people sit and where is free space *per shot*? One speaker with free space beside them → `hook_side`. Different shots need different spots → `hook_zones` (e.g. left of the speaker in the close-up, in the gap BETWEEN two people in a wide shot). No free side at all → `hook_layout: "band"` (one row along the top). Shots where people sit lower/farther away are `wide` ranges. Also note where the head ends in each shot (captions go just under it) and where a table or similar edge is (captions can sit just above it).
 2. **Transcribe**: `python3 scripts/transcribe.py WORK/a.wav WORK/words.json` (needs `pip install faster-whisper`; installing may need the user's OK; the first run downloads a ~3 GB model, wait out a 429 rate limit or use `--model medium`). Show the transcript to the user and fix mistakes via `replace` in the config (e.g. "cop" → "cup") before rendering. Names, slang and swear words are often misheard.
-3. **Config**: write `WORK/config.json` (fields documented at the top of `scripts/render_captions.py`): `hook_end`, `hook_side`, `hook_zones`, `hook_layout`, `key_words` (the 1–3 most important claim words for the hook; money like `$22 billion` is detected automatically), `emphasis` (yellow words after the hook), `replace`, `cuts`, `wide`, `post_y`, `post_wide`.
+3. **Config**: write `WORK/config.json` (fields documented at the top of `scripts/render_captions.py`): `hook_end`, `hook_side`, `hook_zones`, `hook_layout`, `key_words` (the 1–3 most important claim words for the hook; money like `$22 billion` is detected automatically), `emphasis` (yellow words after the hook), `replace`, `cuts`, `wide`, `post_y`, `post_wide`. If the user did not give the hook text, the first question above fixes `hook_end`.
 4. **Plan**: `python3 scripts/render_captions.py plan config.json`. Check that the hook groups read naturally and the right words are `[KEY]`.
 5. **Preview**: `... preview config.json WORK/prev T1 T2 ...` and **look at the images**: hook text must be in the free space and never over the face; nothing on the black bars; nothing cut off at the edge. Check several moments in the hook and several in the rest (including wide shots). Fix zone/side/wide ranges and repeat.
 6. **Render**: `... render config.json`. Then pull 8–12 frames from the *final mp4* and look at them. Deliver with the file-send tool (users can't browse the sandbox) and keep the file under 30 MB (typical output is about 5 MB).
@@ -31,7 +34,7 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 ## The look (defaults, already approved)
 - **Hook**: only on the free side of the speaker, upper corner, inside the picture. Each screen has at most 3 words: row 1 two words side by side (the first more toward the middle, the second in the corner), row 2 one word below (a very long first word goes alone on row 1). A new group is a fresh screen; never stack more words. All white, Inter Black, extra bold (outline) and tight. Words follow the speech beat one by one with a ~0.16 s zoom/fade-in and a soft cross-fade between groups.
 - **Key words** (money, the core claim): cinematic serif (Cinzel Black), **green** for money, **gold** for other key words, stacked big on two rows; "$22" is pulled into the very corner with "BILLION" tight underneath.
-- **After the hook**: one caption at a time, centred, just below the middle of the picture (just under the face), Inter ExtraBold white, **max 2 long or 3 short words** per caption, each word pops in with a quick zoom, emphasis words yellow, on screen at least ~0.5 s where the speech allows.
+- **After the hook**: one caption at a time, centred, Inter ExtraBold white, **max 2 long or 3 short words** per caption, each word pops in with a quick zoom, emphasis words yellow, on screen at least ~0.5 s where the speech allows. **Height: by default just above the middle of the picture** (`post_y` 0.451). **Talking head: just under the person's head** (not over the face; raise `post_y` until the caption clears the chin). **Two people at a table / wide shot: just above the table**, in the gap between the people (`post_wide` with `bottom`), and if the words don't fit side by side put **two words under each other** (`stack`), never over a head.
 - Everything stays inside the real picture and away from the platform buttons (right edge, bottom).
 
 ## Hard lessons (don't repeat)
@@ -42,6 +45,7 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 - Speech at ~4 words per second means a 2–3 word caption can only average ~0.5 s on screen. That is arithmetic, not a bug; say so and offer bigger captions or a sliding window instead of silently breaking the word limit.
 - Words spoken just before a camera cut flash by; the renderer shows them at the cut.
 - **Never put text over a main person's head.** In a wide shot with two people at a table, hook and captions go in the gap *between* them at head height (`hook_zones` + `post_wide`), with a margin on both sides: a person leaning forward moves their head 50+ px, so check several frames, not one. A little overlap with a body or hands is acceptable only if it truly cannot be avoided.
+- Captions in a wide shot with two people: not across their arms/hands. Put them just above the table in the gap and stack the words (2 rows). Break the stack into rows by width, so a 3-word caption becomes 2 rows, not 3.
 - Placement is judged from big frames, not the contact sheet; the first version of a placement was wrong twice (text touching a cap, captions across a man's arms).
 
 ## Tuning cheat-sheet (constants in `render_captions.py`)
@@ -51,7 +55,7 @@ Scripts live in `scripts/` next to this file. Use a work folder in the scratchpa
 | letters closer / words closer | `tracking` and `gapk` in `wd()` |
 | hook words longer on screen | `VIS` / `LAG` in `schedule_hook()` (trade-off: later = less on the beat) |
 | smoother / snappier animation | `ANIM`, `XFADE`, `FOUT` in `schedule_hook()`; `anim` in `build_post()` |
-| captions higher / lower | the `0.451` / `0.513` fractions in `build_post()` |
+| captions higher / lower | `post_y` in the config (default 0.451 = just above the middle); wide shots: `post_wide` |
 | fewer / more words per caption | the `3.0` weight limit and `weight()` in `build_post()` |
 | key word look | colours `GREEN`, `GOLD`, `YELLOW`; `key_words` / `emphasis` in the config |
 
